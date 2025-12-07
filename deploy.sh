@@ -1,7 +1,9 @@
 #!/bin/bash
-echo "Deploying to environment: $1"
-echo "Artifact files located in: $2"
+ENV_NAME=$1
+USER=$2
+PASSWORD=$3
 
-# Simulated deployment
-ls -l "$2"
-echo "Deployment complete!"
+echo "Deploying to $ENV_NAME environment with user $USER"
+echo "Listing deploy folder contents:"
+ls -R deploy
+echo "Deployment completed!"
