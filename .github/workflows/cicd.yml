@@ -1,17 +1,30 @@
-name: CI-CD Pipeline (Manual Trigger)
+name: CI-CD Pipeline (Manual Trigger with Secrets & Env)
 
 # Only run manually
 on:
   workflow_dispatch:
+    inputs:
+      java_version:
+        description: 'Which Java version to build'
+        required: false
+        default: '17'
+      deploy_env:
+        description: 'Which environment to deploy to (dev/qa/prod)'
+        required: false
+        default: 'dev'
 
 jobs:
   build:
-    name: Build Java (Matrix)
+    name: Build Java
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        java_version: [17, 21]
+        java_version: [17, 21]  # matrix build for multiple versions
+
+    env:
+      APP_NAME: "MyJavaApp"           # environment variable available in steps
+      BUILD_DATE: ${{ github.run_id }} # dynamic value
 
     steps:
       - name: Checkout repo
@@ -25,6 +38,7 @@ jobs:
 
       - name: Compile Java
         run: |
+          echo "Compiling $APP_NAME with Java ${{ matrix.java_version }}"
           mkdir -p out
           javac -d out App.java AppTest.java
 
@@ -45,8 +59,10 @@ jobs:
         with:
           path: combined
 
-      - name: List files
-        run: ls -R combined
+      - name: List Files
+        run: |
+          echo "Listing all compiled classes:"
+          ls -R combined
 
       - name: Upload Combined Package
         uses: actions/upload-artifact@v4
@@ -54,11 +70,16 @@ jobs:
           name: consolidated-package
           path: combined/
 
-  deploy_dev:
-    name: Deploy to Dev
+  deploy:
+    name: Deploy Application
     runs-on: ubuntu-latest
     needs: consolidate
-    environment: dev
+    environment: ${{ github.event.inputs.deploy_env }}
+
+    env:
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+      ENV_NAME: ${{ github.event.inputs.deploy_env }}
 
     steps:
       - name: Checkout repo
@@ -72,51 +93,11 @@ jobs:
 
       - name: Run Deployment Script
         run: |
+          echo "Deploying $APP_NAME to $ENV_NAME environment"
+          echo "Using user: $DEPLOY_USER"
           chmod +x deploy.sh
-          ./deploy.sh
+          ./deploy.sh $ENV_NAME $DEPLOY_USER $DEPLOY_PASSWORD
 
-  deploy_qa:
-    name: Deploy to QA
-    runs-on: ubuntu-latest
-    needs: deploy_dev
-    environment:
-      name: qa
-      url: https://qa.example.com
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Download Combined Package
-        uses: actions/download-artifact@v4
-        with:
-          name: consolidated-package
-          path: deploy
-
-      - name: Run Deployment Script
+      - name: Verify Deployment
         run: |
-          chmod +x deploy.sh
-          ./deploy.sh
-
-  deploy_prod:
-    name: Deploy to Prod
-    runs-on: ubuntu-latest
-    needs: deploy_qa
-    environment:
-      name: prod
-      url: https://prod.example.com
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        
-      - name: Download Combined Package
-        uses: actions/download-artifact@v4
-        with:
-          name: consolidated-package
-          path: deploy
-
-      - name: Run Deployment Script
-        run: |
-          chmod +x deploy.sh
-          ./deploy.sh
+          echo "Simulated verification for $ENV_NAME completed"
