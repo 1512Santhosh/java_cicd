@@ -1,0 +1,95 @@
+name: Simple Java CI/CD
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    name: Build & Test (${{ matrix.os }} / Java ${{ matrix.java }})
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        os: [ubuntu]
+        java: [17, 21]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Java ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+
+      - name: Compile Java
+        run: javac App.java AppTest.java
+
+      - name: Run Tests
+        run: java AppTest
+
+      - name: Package Artifacts
+        run: |
+          mkdir artifacts
+          cp *.class artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: java-classes-${{ matrix.java }}
+          path: artifacts/
+
+  consolidate:
+    runs-on: self-hosted
+    needs: build
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: combined/
+
+      - run: ls -R combined/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: consolidated-package
+          path: combined/
+
+  deploy_dev:
+    runs-on: self-hosted
+    needs: consolidate
+    environment: dev
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: consolidated-package
+          path: package/
+
+      - run: ./deploy.sh dev package/
+
+  deploy_qa:
+    runs-on: self-hosted
+    needs: deploy_dev
+    environment: qa
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: consolidated-package
+          path: package/
+
+      - run: ./deploy.sh qa package/
+
+  deploy_prod:
+    runs-on: self-hosted
+    needs: deploy_qa
+    environment: prod
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: consolidated-package
+          path: package/
+
+      - run: ./deploy.sh prod package/
