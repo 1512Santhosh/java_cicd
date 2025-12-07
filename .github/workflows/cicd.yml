@@ -1,95 +1,113 @@
-name: Simple Java CI/CD
+name: CI-CD Pipeline (Manual Trigger)
 
+# Only run manually
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-
   build:
-    name: Build & Test (${{ matrix.os }} / Java ${{ matrix.java }})
-    runs-on: self-hosted
+    name: Build Java (Matrix)
+    runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        os: [ubuntu]
-        java: [17, 21]
+        java_version: [17, 21]
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Install Java ${{ matrix.java }}
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ matrix.java }}
           distribution: temurin
+          java-version: ${{ matrix.java_version }}
 
       - name: Compile Java
-        run: javac App.java AppTest.java
-
-      - name: Run Tests
-        run: java AppTest
-
-      - name: Package Artifacts
         run: |
-          mkdir artifacts
-          cp *.class artifacts/
+          mkdir -p out
+          javac -d out src/App.java
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: java-classes-${{ matrix.java }}
-          path: artifacts/
+          name: java-classes-${{ matrix.java_version }}
+          path: out/
 
   consolidate:
-    runs-on: self-hosted
+    name: Consolidate Build Artifacts
+    runs-on: ubuntu-latest
     needs: build
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: combined/
+          path: combined
 
-      - run: ls -R combined/
+      - name: List files
+        run: ls -R combined
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Combined Package
+        uses: actions/upload-artifact@v4
         with:
           name: consolidated-package
           path: combined/
 
   deploy_dev:
-    runs-on: self-hosted
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
     needs: consolidate
     environment: dev
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Combined Package
+        uses: actions/download-artifact@v4
         with:
           name: consolidated-package
-          path: package/
+          path: deploy
 
-      - run: ./deploy.sh dev package/
+      - name: Run Deployment Script
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh
 
   deploy_qa:
-    runs-on: self-hosted
+    name: Deploy to QA
+    runs-on: ubuntu-latest
     needs: deploy_dev
-    environment: qa
+    environment:
+      name: qa
+      url: https://qa.example.com
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Combined Package
+        uses: actions/download-artifact@v4
         with:
           name: consolidated-package
-          path: package/
+          path: deploy
 
-      - run: ./deploy.sh qa package/
+      - name: Run Deployment Script
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh
 
   deploy_prod:
-    runs-on: self-hosted
+    name: Deploy to Prod
+    runs-on: ubuntu-latest
     needs: deploy_qa
-    environment: prod
+    environment:
+      name: prod
+      url: https://prod.example.com
 
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download Combined Package
+        uses: actions/download-artifact@v4
         with:
           name: consolidated-package
-          path: package/
+          path: deploy
 
-      - run: ./deploy.sh prod package/
+      - name: Run Deployment Script
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh
